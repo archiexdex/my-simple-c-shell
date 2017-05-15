@@ -1,5 +1,5 @@
 C   = gcc
 CXX = g++
 
-all : shell.c
-	${C} $< -o hw3
+all : shell.cpp
+	${CXX} $< -o hw3 -std=c++11
