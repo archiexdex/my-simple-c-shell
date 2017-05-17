@@ -14,7 +14,6 @@ using namespace std;
 #define MAX_ARG_COUNT (15)
 #define MAX_CMD_COUNT (5)
 
-void signal_config();
 
 /* Purpose: Load a command sequence from standard input. */
 char *read_cmd_seq();
@@ -35,17 +34,37 @@ char *str_strip(char *str);
 /* Purpose: Count the fequency of a character in the string. */
 int str_char_count(char const *str, char c);
 
-void write_file(string file_name);
+struct node {
+	char **process;
+	pid_t pid;
+	int mode;
+};
+
+vector<node> jobs;
+
+void SIG_DF(int i){ puts("@@");}
 
 int main(){
-	while (1){
-		char *cmd_seq = read_cmd_seq();
-		if (cmd_seq == NULL) { break; }
 
-		execute_cmd_seq(parse_cmd_seq(cmd_seq));
+
+	signal(SIGTSTP, SIG_IGN);
+	signal(SIGINT, SIG_IGN);
+	//signal(SIGQUIT, SIG_IGN);
+	
+	pid_t pid = getpid();
+    setpgid(pid, pid);
+    tcsetpgrp(0, pid);
+	
+	while (1){
+		char *cmd = read_cmd_seq();
+		if( !cmd || !strcmp(cmd,"@@") ) { puts(""); continue;}
+		//if (cmd == NULL) { break; }
+		if( strcmp(cmd,"exit") == 0 ) break;
+
+		execute_cmd_seq(parse_cmd_seq((char*)cmd));
 		fputc('\n', stdout);
 	}
-
+	
 	return EXIT_SUCCESS;
 }
 
@@ -88,13 +107,22 @@ void execute_cmd_seq(char ***argvs){
 	/* 等待所有的程式執行完畢 */
 	for (C = 0; C < cmd_count; ++C){
 		int status = 0;
-		wait(&status);
+		node tmp = jobs[C];
+		jobs.erase(jobs.begin()+C);
+		waitpid(tmp.pid,&status,WUNTRACED);
+		//wait(&status);
 	}  
 }
 
 void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_fd[][2]){
 	pid_t proc = fork();
-
+	
+	node tmp;
+	tmp.pid = proc;
+	tmp.process = argv;
+	tmp.mode = 0;
+	jobs.push_back(tmp);
+	
 	if (proc < 0){
 		fprintf(stderr, "Error: Unable to fork.\n");
 		exit(EXIT_FAILURE);
@@ -104,24 +132,34 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 		int inf, outf, id = 0, pin = 0, pout = 0, setid = 0, unsetid = 0;
 		bool isIn = false, isOut = false;
 		bool isSetenv = false, isUnset = false;
+		bool isJobs = false;
 		string infilename = "", outfilename = "";
 		
 		
+		
+		signal(SIGINT, SIG_DFL);
+        //signal(SIGQUIT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+        //signal(SIGTTIN, SIG_DFL);
+        //signal(SIGTTOU, SIG_DFL);
+        //signal(SIGCHLD, SIG_DFL);
 		
 		for( int i = 0 ; argv[i] ; ++i ){
 			string ptr = argv[i];
 			if( ptr == "export" ){
 				setid = i;
 				if( argv[i+1] ){
-					argv[i] = "set";
+					argv[i] = strdup("set");
 					isSetenv = true;
 				}
 				else {
-					argv[i] = "env";
+					argv[i] = strdup("env");
 				}
 			}
 			if( ptr == "unset" )
 				isUnset = true, unsetid = i;
+			if( ptr == "jobs" )
+				isJobs = true;
 		}
 		
 		for( int i = 0 ; argv[i] ; ++i ){
@@ -149,7 +187,19 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 			}
 		}
 		//printf("isIn %d isOut %d pipecount %d\n",isIn, isOut, pipes_count);
-		
+		if( isJobs ){
+			int tt = 1;
+			for( int i = 0 ; i < jobs.size() ; ++i ){
+				if( jobs[i].mode == 1 ){
+					printf("[%d] ", tt++);
+					for( int j = 0 ; jobs[i].process[j] ; ++j ){
+						cout << jobs[i].process[j] ;
+					}
+					puts("");
+				}
+			}
+			return ;
+		}
 		
 		if (isIn){
 			inf = open(infilename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -170,9 +220,6 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 			close(pipes_fd[P][0]);
 			close(pipes_fd[P][1]);
 		}
-		
-		
-		
 		
 		if( isSetenv ){
 			for( int i = setid+1 ; argv[i] ; ++i ){
@@ -232,13 +279,14 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 char *read_cmd_seq(){
 	static char cmd_seq_buffer[CMD_SEQ_BUFF_SIZE];
 
-	fputs("(」・ω・)」うー！(／・ω・)／にゃー！ ", stdout);
+	fputs("\033[1;33m" "(」・ω・)」うー！(／・ω・)／にゃー！ ", stdout);
+	fprintf(stdout, "\033[m");
 	fflush(stdout);
 
 	memset(cmd_seq_buffer, '\0', sizeof(cmd_seq_buffer));
 	fgets(cmd_seq_buffer, sizeof(cmd_seq_buffer), stdin);
 
-	if (feof(stdin)) { return NULL; }
+	if (feof(stdin) || cmd_seq_buffer[0] == 10 ) { return strdup("@@"); }
 
 	char *cmd_seq = str_strip(cmd_seq_buffer);
 	if (strlen(cmd_seq) == 0) { return NULL; }
