@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <glob.h>
 using namespace std;
 
 #define CMD_SEQ_BUFF_SIZE (1024)
@@ -100,10 +101,28 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 	}
 	else if (proc == 0){
 		/* 把 fd_in 與 fd_out 分別當成 stdin 與 stdout。 */
-		int inf, outf, id = 0, pin = 0, pout = 0;
-		bool isIn = false;
-		bool isOut = false;
+		int inf, outf, id = 0, pin = 0, pout = 0, setid = 0, unsetid = 0;
+		bool isIn = false, isOut = false;
+		bool isSetenv = false, isUnset = false;
 		string infilename = "", outfilename = "";
+		
+		
+		
+		for( int i = 0 ; argv[i] ; ++i ){
+			string ptr = argv[i];
+			if( ptr == "export" ){
+				setid = i;
+				if( argv[i+1] ){
+					argv[i] = "set";
+					isSetenv = true;
+				}
+				else {
+					argv[i] = "env";
+				}
+			}
+			if( ptr == "unset" )
+				isUnset = true, unsetid = i;
+		}
 		
 		for( int i = 0 ; argv[i] ; ++i ){
 			string ptr = argv[i];
@@ -129,7 +148,7 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 				argv[j] = NULL;
 			}
 		}
-		printf("isIn %d isOut %d pipecount %d\n",isIn, isOut, pipes_count);
+		//printf("isIn %d isOut %d pipecount %d\n",isIn, isOut, pipes_count);
 		
 		
 		if (isIn){
@@ -153,6 +172,51 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 		}
 		
 		
+		
+		
+		if( isSetenv ){
+			for( int i = setid+1 ; argv[i] ; ++i ){
+				char *ptr = strtok(argv[i],"=");
+				char *a = ptr;
+				ptr = strtok(NULL, "=");
+				char *b = ptr;
+				//printf("a : %s b : %s \n",a,b);
+				if( !b )
+					setenv(a,"",1);
+				else
+					setenv(a,b,1);
+			}
+			return;
+		}
+		if( isUnset ){
+			for( int i = unsetid+1 ; argv[i] ; ++i ){
+				char *ptr = argv[i];
+				puts(ptr);
+				unsetenv(ptr);
+			}
+			return ;
+		}
+		
+		vector<string> v;
+		for( int i = 0 ; argv[i] ; ++i ){
+			string tmp = argv[i];
+			if( tmp.find("*") != string::npos || tmp.find("?") != string ::npos ){
+				glob_t gl;
+				glob(tmp.c_str(), GLOB_TILDE, NULL, &gl);
+				for(int i = 0 ; i < gl.gl_pathc ; ++i){
+					v.push_back(gl.gl_pathv[i]);
+				}
+				globfree(&gl);
+			}
+			else {
+				v.push_back(tmp);
+			}
+		}
+
+		if( !v.empty() )
+			for( int i = 0 ; i < v.size() ; ++i )
+				argv[i] = (char*)v[i].c_str();
+		
 		if ( execvp(argv[0], argv) == -1){
 			
 			fprintf(stderr,"Error: Unable to load the executable %s.\n", argv[0]);
@@ -168,7 +232,7 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 char *read_cmd_seq(){
 	static char cmd_seq_buffer[CMD_SEQ_BUFF_SIZE];
 
-	fputs("shell-prompt$ ", stdout);
+	fputs("(」・ω・)」うー！(／・ω・)／にゃー！ ", stdout);
 	fflush(stdout);
 
 	memset(cmd_seq_buffer, '\0', sizeof(cmd_seq_buffer));
@@ -233,8 +297,6 @@ char *str_strip(char *str){
 
 	return str;
 }
-
-
 
 /* Purpose: Count the fequency of a character in the string. */
 int str_char_count(char const *str, char c){
