@@ -8,7 +8,7 @@ Install
 Please put the project in linux base environment.
 It is very important thing!!!!!!!!!
 
-Just put command `make` then you will get hw3
+Just put command `make` then you will get `hw3`
 
 How to run
 ----------
@@ -17,6 +17,8 @@ then you will enter my shell
 
 Example 
 -------
+If you want to leave the shell, you can use Ctrl-\
+
 Execute a single command: 
 `ls -la`
 

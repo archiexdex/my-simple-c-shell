@@ -42,7 +42,26 @@ struct node {
 
 vector<node> jobs;
 
-void SIG_DF(int i){ puts("@@");}
+bool shouldPush = false;
+
+void printJobs(){
+	int tt = 1;
+	for( int i = 0 ; i < jobs.size() ; ++i ){
+		if( jobs[i].mode == 1 ){
+			printf("[%d] mode %d ", tt++, jobs[i].mode);
+			for( int j = 0 ; jobs[i].process[j] ; ++j ){
+				cout << jobs[i].process[j] ;
+			}
+			puts("");
+		}
+	}
+}
+
+void sigtstp(int sig){
+	signal(SIGTSTP, SIG_DFL);
+	jobs.back().mode = 1;
+	//printJobs();
+}
 
 int main(){
 
@@ -52,6 +71,7 @@ int main(){
 	//signal(SIGQUIT, SIG_IGN);
 	
 	pid_t pid = getpid();
+	cout << "root pid " << pid << endl;
     setpgid(pid, pid);
     tcsetpgrp(0, pid);
 	
@@ -110,9 +130,10 @@ void execute_cmd_seq(char ***argvs){
 	for (C = 0; C < cmd_count; ++C){
 		int status = 0;
 		node tmp = jobs[C];
-		waitpid(tmp.pid,&status,WUNTRACED);
+		int cpid = waitpid(tmp.pid,&status,WUNTRACED);
 		//wait(&status);
 	}  
+	printJobs();
 	for( int i = 0 ; i < jobs.size() ;  ){
 		if ( jobs[i].mode == 0 ){
 			jobs.erase(jobs.begin() + i);
@@ -127,9 +148,9 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 	pid_t proc = fork();
 	
 	node tmp;
-	tmp.pid = proc;
+	tmp.pid = -1; 
 	tmp.process = argv;
-	tmp.mode = 0;
+	tmp.mode = 0 ;
 	jobs.push_back(tmp);
 	
 	if (proc < 0){
@@ -144,7 +165,8 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 		bool isJobs = false;
 		string infilename = "", outfilename = "";
 		
-		
+		// update child pid
+		jobs.back().pid = getpid();
 		
 		signal(SIGINT, SIG_DFL);
         //signal(SIGQUIT, SIG_DFL);
@@ -152,8 +174,8 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
         //signal(SIGTTIN, SIG_DFL);
         //signal(SIGTTOU, SIG_DFL);
         //signal(SIGCHLD, SIG_DFL);
-		
-		for( int i = 0 ; argv[i] ; ++i ){
+		int i = 0;
+		for( i = 0 ; argv[i] ; ++i ){
 			string ptr = argv[i];
 			if( ptr == "export" ){
 				setid = i;
@@ -169,6 +191,12 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 				isUnset = true, unsetid = i;
 			if( ptr == "jobs" )
 				isJobs = true;
+			
+		}
+		if ( !strcmp(argv[i-1],"&") ){
+			argv[i-1] = NULL;
+			jobs.back().mode = 1;
+			
 		}
 		
 		for( int i = 0 ; argv[i] ; ++i ){
@@ -197,16 +225,7 @@ void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_f
 		}
 		//printf("isIn %d isOut %d pipecount %d\n",isIn, isOut, pipes_count);
 		if( isJobs ){
-			int tt = 1;
-			for( int i = 0 ; i < jobs.size() ; ++i ){
-				if( jobs[i].mode == 1 ){
-					printf("[%d] ", tt++);
-					for( int j = 0 ; jobs[i].process[j] ; ++j ){
-						cout << jobs[i].process[j] ;
-					}
-					puts("");
-				}
-			}
+			printJobs();
 			return ;
 		}
 		
