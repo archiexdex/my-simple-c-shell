@@ -59,7 +59,9 @@ int main(){
 		char *cmd = read_cmd_seq();
 		if( !cmd || !strcmp(cmd,"@@") ) { puts(""); continue;}
 		//if (cmd == NULL) { break; }
-		if( strcmp(cmd,"exit") == 0 ) break;
+		if( strcmp(cmd,"exit") == 0 ) {
+			return 0;
+		}
 
 		execute_cmd_seq(parse_cmd_seq((char*)cmd));
 		fputc('\n', stdout);
@@ -108,10 +110,17 @@ void execute_cmd_seq(char ***argvs){
 	for (C = 0; C < cmd_count; ++C){
 		int status = 0;
 		node tmp = jobs[C];
-		jobs.erase(jobs.begin()+C);
 		waitpid(tmp.pid,&status,WUNTRACED);
 		//wait(&status);
 	}  
+	for( int i = 0 ; i < jobs.size() ;  ){
+		if ( jobs[i].mode == 0 ){
+			jobs.erase(jobs.begin() + i);
+		}
+		else {
+			++i;
+		}
+	}
 }
 
 void creat_proc(char **argv, int fd_in, int fd_out, int pipes_count, int pipes_fd[][2]){
