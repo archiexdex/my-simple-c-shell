@@ -71,7 +71,6 @@ int main(){
 	//signal(SIGQUIT, SIG_IGN);
 	
 	pid_t pid = getpid();
-	cout << "root pid " << pid << endl;
     setpgid(pid, pid);
     tcsetpgrp(0, pid);
 	
